@@ -1,0 +1,26 @@
+[project]
+name = "agent-platform"
+version = "0.1.0"
+description = "Trace-driven business understanding agent platform"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.100",
+    "uvicorn[standard]>=0.20",
+    "httpx>=0.24",
+]
+
+[project.optional-dependencies]
+tree-sitter = [
+    "tree-sitter>=0.20",
+    "tree-sitter-go>=0.20",
+    "tree-sitter-java>=0.20",
+]
+llm = [
+    "anthropic>=0.40",
+]
+dev = [
+    "pytest>=7.0",
+]
+
+[project.scripts]
+agent-platform = "main:main"

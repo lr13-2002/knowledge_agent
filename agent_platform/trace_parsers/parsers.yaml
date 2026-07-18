@@ -1,0 +1,43 @@
+# Trace 日志 parser 配置(AGENTS.md §9.6)
+# 接入新服务:加一段 yaml + 一个 fixture + 跑回归,不写代码。
+#
+# 重要修正(2026-06-24 实测):mcp 返回的 logs[] 数组里通常**只有 log 全文**,
+# 不一定有 line 结构化字段。统一从 log 全文用正则提取 [caller] 部分。
+# downstream._undef[].line / inRawLog[].line 才是结构化的,那些走另一条解析路径。
+#
+# 字段说明:
+#   match.appname_contains   - appname 子串匹配,决定哪条规则生效
+#   match.lang               - 兜底语言匹配
+#   pattern                  - 命名捕获正则,跨整条 log 文本应用
+#                              必须捕获 line(行号),可选捕获 file/func/pkg_class
+#   strip_prefix             - 匹配前,先对 [...] 内的内容去前缀(spruce 的构建路径)
+#   has_function             - true=正则捕获了 func 名,可直接 join CodeSymbol.symbol_name
+
+parsers:
+  - name: spruce
+    match: { appname_contains: "spruce" }
+    # 在 log 全文里找 [/gaia/.../build/path/file.go:NN]
+    pattern: '\[/gaia/workspace-job/git\.xiaojukeji\.com/[^]]+/build/(?P<file>[^]:]+\.go):(?P<line>\d+)\]'
+    has_function: false
+
+  - name: cedar
+    match: { appname_contains: "cedar" }
+    # cedar 的 caller 形如 [git.xiaojukeji.com/nuwa/cedar/.../pkg.Func/file.go:NN]
+    # 也可能是 [..it.xiaojukeji.com/nuwa/cedar/router.Init.TraceWithConfig.func4.1/trace.go:81]
+    # 策略:贪婪到最后一个 / 之前都是 pkg_func,后面是 file.go;file 不含 /
+    pattern: '\[(?P<pkg_func>[^\[\]]+)/(?P<file>[\w]+\.go):(?P<line>\d+)\]'
+    has_function: true
+    func_field_split: "."   # pkg_func 按最后一个 . 切,后半是 func
+
+  # L2 兜底:Java 默认
+  - name: java_default
+    match: { lang: java }
+    pattern: '\[(?P<pkg_class>com\.[\w.]+):(?P<line>\d+)\]'
+    has_function: false
+    file_field_derive: from_pkg_class
+
+  # L3 终极兜底:任何服务都能跑,降级精度
+  - name: generic_fallback
+    match: {}
+    pattern: '\[(?P<anything>[\w./]+):(?P<line>\d+)\]'
+    has_function: false
